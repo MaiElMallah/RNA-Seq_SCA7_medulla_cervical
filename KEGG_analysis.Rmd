@@ -1,0 +1,306 @@
+---
+title: "KEGG_analysis"
+author: "Yihan Shi"
+date: "11/14/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(DOSE)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(annotate)
+library(pathview)
+library(gage)
+library(tidyverse)
+library(gageData)
+library(enrichplot)
+library(organism, character.only = TRUE)
+library(ggridges)
+```
+
+```{r data, message = FALSE, warning = FALSE}
+data("go.sets.mm")
+data("go.subs.mm")
+data("kegg.sets.mm")
+data("sigmet.idx.mm")
+```
+
+```{r functions}
+# Converts deseq object into a dataframe, labels significant result, and orders in Log2Fold change
+#
+# Args:
+#   deseq_res: deseq results object
+# Returns:
+#   deseq_df: dataframe of ordered and labeled deseq results
+CreateDF <- function(deseq_res){
+  deseq_df <- as.data.frame(deseq_res)
+  deseq_df <- na.omit(deseq_df)
+  deseq_df <- rownames_to_column(deseq_df, "GeneID")
+  deseq_df$ENTREZ <- mapIds(org.Mm.eg.db,
+                           key = deseq_df$GeneID,
+                           column = "ENTREZID",
+                           keytype = "SYMBOL",
+                           multiVals = "first")
+  deseq_df <- mutate(deseq_df, sig = ifelse(deseq_df$padj<0.1, "FDR<0.1","Not Sig"))
+  deseq_df[which(abs(deseq_df$log2FoldChange)<1.0), "sig"] <- "Not Sig"
+  deseq_df <- deseq_df[order(abs(deseq_df$log2FoldChange), decreasing = TRUE),]
+  return(deseq_df)
+}
+```
+
+```{r}
+# Prepare res object
+csc_res_p
+csc_res_5w
+csc_res_9w
+
+med_res_p 
+med_res_5w 
+med_res_9w
+
+```
+
+```{r csc}
+# csc_res_p
+csc_res_p_df <- CreateDF(csc_res_p)
+csc_res_p_df <- csc_res_p_df[!duplicated(csc_res_p_df$ENTREZ),]
+csc_res_p_lfc <- csc_res_p_df$log2FoldChange
+names(csc_res_p_lfc) <- csc_res_p_df$ENTREZ
+csc_res_p_lfc <- sort(csc_res_p_lfc, decreasing = TRUE)
+
+csc_res_p_kk <- gseKEGG(geneList = csc_res_p_lfc,
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        eps = 1e-10)
+
+csc_res_p_ego <- enrichKEGG(gene = names(csc_res_p_lfc),
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.01
+                        )
+
+barplot(csc_res_p_ego, showCategory=20)
+
+
+# csc_res_5w
+csc_res_5w_df <- CreateDF(csc_res_5w)
+csc_res_5w_df <- csc_res_5w_df[!duplicated(csc_res_5w_df$ENTREZ),]
+csc_res_5w_lfc <- csc_res_5w_df$log2FoldChange
+names(csc_res_5w_lfc) <- csc_res_5w_df$ENTREZ
+csc_res_5w_lfc <- sort(csc_res_5w_lfc, decreasing = TRUE)
+
+# gase object
+csc_res_5w_kk <- gseKEGG(geneList = csc_res_5w_lfc,
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        eps = 1e-10)
+
+csc_res_5w_ego <- enrichKEGG(gene = names(csc_res_5w_lfc),
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.01
+                        )
+
+barplot(csc_res_5w_ego, showCategory=15)
+
+# csc_res_9w
+csc_res_9w_df <- CreateDF(csc_res_9w)
+csc_res_9w_df <- csc_res_9w_df[!duplicated(csc_res_9w_df$ENTREZ),]
+csc_res_9w_lfc <- csc_res_9w_df$log2FoldChange
+names(csc_res_9w_lfc) <- csc_res_9w_df$ENTREZ
+csc_res_9w_lfc <- sort(csc_res_9w_lfc, decreasing = TRUE)
+
+csc_res_9w_kk <- gseKEGG(geneList = csc_res_9w_lfc,
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        eps = 1e-10)
+
+csc_res_9w_ego <- enrichKEGG(gene = names(csc_res_9w_lfc),
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.01
+                        )
+
+barplot(csc_res_9w_ego, showCategory=15)
+```
+
+```{r}
+# med_res_p
+med_res_p_df <- CreateDF(med_res_p)
+med_res_p_df <- med_res_p_df[!duplicated(med_res_p_df$ENTREZ),]
+med_res_p_lfc <- med_res_p_df$log2FoldChange
+names(med_res_p_lfc) <- med_res_p_df$ENTREZ
+med_res_p_lfc <- sort(med_res_p_lfc, decreasing = TRUE)
+
+med_res_p_kk <- gseKEGG(geneList = med_res_p_lfc,
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        eps = 1e-10)
+
+med_res_p_ego <- enrichKEGG(gene = names(med_res_p_lfc),
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.01
+                        )
+
+# barplot(med_res_p_ego, showCategory=20)
+
+# med_res_5w
+med_res_5w_df <- CreateDF(med_res_5w)
+med_res_5w_df <- med_res_5w_df[!duplicated(med_res_5w_df$ENTREZ),]
+med_res_5w_lfc <- med_res_5w_df$log2FoldChange
+names(med_res_5w_lfc) <- med_res_5w_df$ENTREZ
+med_res_5w_lfc <- sort(med_res_5w_lfc, decreasing = TRUE)
+
+med_res_5w_kk <- gseKEGG(geneList = med_res_5w_lfc,
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        eps = 1e-10)
+
+med_res_5w_ego <- enrichKEGG(gene = names(med_res_5w_lfc),
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.01
+                        )
+
+# barplot(med_res_5w_ego, showCategory=20)
+
+
+# med_res_9w
+med_res_9w_df <- CreateDF(med_res_9w)
+med_res_9w_df <- med_res_9w_df[!duplicated(med_res_9w_df$ENTREZ),]
+med_res_9w_lfc <- med_res_9w_df$log2FoldChange
+names(med_res_9w_lfc) <- med_res_9w_df$ENTREZ
+med_res_9w_lfc <- sort(med_res_9w_lfc, decreasing = TRUE)
+
+med_res_9w_kk <- gseKEGG(geneList = med_res_9w_lfc,
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.01,
+                        pAdjustMethod = "BH",
+                        eps = 1e-10)
+ridgeplot(med_res_9w_kk)
+
+med_res_9w_ego <- enrichKEGG(gene = names(med_res_9w_lfc),
+                        organism = "mmu",
+                        keyType = "kegg",
+                        pvalueCutoff = 0.05,
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.01
+                        )
+
+barplot(med_res_9w_ego, showCategory=15)
+```
+
+```{r}
+# convert from s4 to datafram
+csc_p_kegg_df <- as.data.frame(csc_res_p_kk)
+csc_5w_kegg_df <- as.data.frame(csc_res_5w_kk)
+csc_9w_kegg_df <- as.data.frame(csc_res_9w_kk)
+med_p_kegg_df <- as.data.frame(med_res_p_kk)
+med_5w_kegg_df <- as.data.frame(med_res_5w_kk)
+med_9w_kegg_df <- as.data.frame(med_res_9w_kk)
+
+csc_p_kegg_df <- as.data.frame(csc_res_p_ego)
+csc_5w_kegg_df <- as.data.frame(csc_res_5w_ego)
+csc_9w_kegg_df <- as.data.frame(csc_res_9w_ego)
+med_p_kegg_df <- as.data.frame(med_res_p_ego)
+med_5w_kegg_df <- as.data.frame(med_res_5w_ego)
+med_9w_kegg_df <- as.data.frame(med_res_9w_ego)
+
+```
+```{r}
+library(glue)
+res_df_ordered <- tibble::rownames_to_column(res_df_ordered, "name")
+
+# csc_clean_data
+csc_cleaned <- csc_9w_kegg_df %>%
+  select(Description, p.adjust, geneID, Count) 
+geneids <- unlist(as.list(csc_cleaned %>% select(geneID)))[1:15]
+# create csc dataframe
+for (pathway in 1:15) {
+  genes_count <- csc_cleaned$Count[pathway]
+  cols <- 3
+  mat = matrix(NA, nrow = genes_count, ncol = cols)
+  geneid_pathway <- strsplit(geneids[pathway], "/")
+  
+  for (i in 1:genes_count) {
+    mat[i,1] <- csc_cleaned$Description[pathway]
+    if (geneid_pathway[[1]][i] %in% csc_res_9w_df$ENTREZ){
+      id <- geneid_pathway[[1]][i]
+      gene_name <- csc_res_9w_df$GeneID[csc_res_9w_df$ENTREZ == id]
+      gene_name <- gene_name[!is.na(gene_name)]
+      mat[i,2] <- gene_name
+      p.adj <- res_df_ordered$padj[res_df_ordered$name == gene_name]
+      mat[i,3] <- p.adj
+      dat <- as.data.frame(mat) %>%
+        arrange(as.numeric(V3))
+    }
+  }
+  saveRDS(dat, file = glue("data/csc_9w_kegggenes_{pathway}.rds"))
+  
+}
+
+
+# med_clean_data
+med_cleaned <- med_9w_kegg_df %>%
+  select(Description, p.adjust, geneID, Count) 
+geneids <- unlist(as.list(med_cleaned %>% select(geneID)))[1:15]
+# create med dataframe
+for (pathway in 1:15) {
+  genes_count <- med_cleaned$Count[pathway]
+  cols <- 3
+  mat = matrix(NA, nrow = genes_count, ncol = cols)
+  geneid_pathway <- strsplit(geneids[pathway], "/")
+  
+  for (i in 1:genes_count) {
+    mat[i,1] <- med_cleaned$Description[pathway]
+    if (geneid_pathway[[1]][i] %in% med_res_9w_df$ENTREZ){
+      id <- geneid_pathway[[1]][i]
+      gene_name <- med_res_9w_df$GeneID[med_res_9w_df$ENTREZ == id]
+      gene_name <- gene_name[!is.na(gene_name)]
+      mat[i,2] <- gene_name
+      p.adj <- res_df_ordered$padj[res_df_ordered$name == gene_name]
+      mat[i,3] <- p.adj
+      dat <- as.data.frame(mat) %>%
+        arrange(as.numeric(V3))
+    }
+  }
+  saveRDS(dat, file = glue("data/med_9w_kegggenes_{pathway}.rds"))
+}
+
+```
+
+```{r}
+# combine
+csc_df <- list.files(path = "data/csc_kegg_15", pattern = ".rds", full.names=T) %>%
+  map_dfr(readRDS) %>% 
+  bind_rows()
+med_df <- list.files(path = "data", pattern = ".rds", full.names=T) %>%
+  map_dfr(readRDS) %>% 
+  bind_rows()
+unique(med_df$V1)
+# write.csv(csc_df, "P:/El Mallah Lab/Yihan/ST022/paper_review_2023_5/csc_pathway_genes.csv", row.names=FALSE)
+# write.csv(med_df, "P:/El Mallah Lab/Yihan/ST022/paper_review_2023_5/med_pathway_genes.csv", row.names=FALSE)
+```

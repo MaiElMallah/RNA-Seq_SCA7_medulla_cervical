@@ -1,0 +1,460 @@
+---
+title: "function_analysis_age_tissue"
+author: "Yihan Shi"
+date: "10/1/2021"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, comment = NA, 
+                      message = FALSE, warning = FALSE,
+                      fig.height = 6, fig.width = 9, fig.align = "center")
+```
+
+```{r load-packages, message = FALSE, warning = FALSE, cache=TRUE}
+library(DESeq2)
+library(apeglm)
+library(ggrepel)
+library(tidyverse)
+library(dplyr)
+library(gplots)
+library(RColorBrewer)
+library(genefilter)
+library(org.Hs.eg.db)
+library(org.Mm.eg.db)
+library(pathview)
+library(gageData)
+library(gage)
+library(clusterProfiler)
+library(DOSE)
+library(enrichplot)
+library(cowplot)
+library(ComplexHeatmap)
+library("writexl")
+library(csv)
+```
+
+```{r setup-functions}
+# Read in sample sheet and append sample name as row labels
+# Args: input.file: a .txt samplesheet
+# Return: a data table
+ReadTable <- function(input.file) {
+  table <- read.table(input.file, header=T, sep="\t")
+  rownames(table) <- table$SampleName
+  return(table)
+}
+
+# Subsets sample sheet to only include specified tissue
+# Args: table of sample sheet on samples
+# Returns: a subsetted table
+SetTissue <- function(table, tissue) {
+  table <- subset(table, Tissue == tissue)
+  return(table)
+}
+```
+
+
+```{r read data}
+sampletable <- ReadTable("sample_sheet_files/sample_sheet.txt")
+
+sampletable %>% 
+  arrange(match(Age, c("9w", "5w", "p")), 
+          Tissue,
+          match(Genotype, c("WT", "SCA7")))
+
+sampletable <- sampletable %>%
+  arrange(desc(Genotype))
+```
+
+
+```{r csc, message = FALSE, warning = FALSE}
+# create csc table by age
+csc_sampletable_p <- sampletable %>%  
+  filter(Tissue == "csc" & Age == "p") %>%
+  arrange(desc(Genotype))
+
+csc_sampletable_5w <- sampletable %>%  
+  filter(Tissue == "csc" & Age == "5w") %>%
+  arrange(desc(Genotype))
+
+csc_sampletable_9w <-sampletable %>%  # 10 rows
+  filter(Tissue == "csc" & Age == "9w") %>%
+  arrange(desc(Genotype))
+
+csc_sampletable_young <-sampletable %>%  # 10 rows
+  filter(Tissue == "csc" & Age %in% c("5w", "p")) %>%
+  arrange(desc(Genotype))
+```
+
+
+```{r med, message = FALSE, warning = FALSE, cache=TRUE}
+# create med table
+med_sampletable_p <- sampletable %>%  
+  filter(Tissue == "med" & Age == "p") %>%
+  arrange(desc(Genotype))
+
+med_sampletable_5w <- sampletable %>%  
+  filter(Tissue == "med" & Age == "5w") %>%
+  arrange(desc(Genotype))
+
+med_sampletable_9w <- sampletable %>%  # 10 rows
+  filter(Tissue == "med" & Age == "9w") %>%
+  arrange(desc(Genotype))
+
+med_sampletable_young <- sampletable %>%  # 10 rows
+  filter(Tissue == "med" & Age %in% c("5w", "p")) %>%
+  arrange(desc(Genotype))
+```
+
+```{r create dds object for csc, cache=TRUE}
+csc_dds_p <- DESeqDataSetFromHTSeqCount(sampleTable = csc_sampletable_p,
+                        directory = "../data/counts_4thcol/",
+                        design = ~ Genotype)
+csc_dds_5w <- DESeqDataSetFromHTSeqCount(sampleTable = csc_sampletable_5w,
+                        directory = "../data/counts_4thcol/",
+                        design = ~ Genotype)
+csc_dds_9w <- DESeqDataSetFromHTSeqCount(sampleTable = csc_sampletable_9w,
+                        directory = "../data/counts_4thcol/",
+                        design = ~ Genotype)
+csc_dds_young <- DESeqDataSetFromHTSeqCount(sampleTable = csc_sampletable_young,
+                        directory = "../data/counts_4thcol/",
+                        design = ~ Genotype)
+
+# pre-filter to exclude rows with few reads, reduce memory size of ddsHTSeq
+csc_dds_p <- DESeq(csc_dds_p[rowSums(counts(csc_dds_p)) >= 10])
+csc_dds_5w <- DESeq(csc_dds_5w[rowSums(counts(csc_dds_5w)) >= 10])
+csc_dds_9w <- DESeq(csc_dds_9w[rowSums(counts(csc_dds_9w)) >= 10]) 
+csc_dds_young <- DESeq(csc_dds_young[rowSums(counts(csc_dds_young)) >= 10]) 
+
+# set Genotype, Age, Tissue as a factor and relevel 'WT' as baseline
+csc_dds_p$Genotype <- factor(csc_dds_p$Genotype, level = c('WT', 'SCA7'))
+csc_dds_5w$Genotype <- factor(csc_dds_5w$Genotype, level = c('WT', 'SCA7'))
+csc_dds_9w$Genotype <- factor(csc_dds_9w$Genotype, level = c('WT', 'SCA7'))
+csc_dds_young$Genotype <- factor(csc_dds_young$Genotype, level = c('WT', 'SCA7'))
+
+# create result object
+csc_res_p <- results(csc_dds_p, alpha = 0.05)
+csc_res_5w <- results(csc_dds_5w, alpha = 0.05)
+csc_res_9w <- results(csc_dds_9w, alpha = 0.05)
+csc_res_young <- results(csc_dds_young, alpha = 0.05)
+
+# order result object by p-adjusted value
+csc_resOrdered_p <- csc_res_p[order(csc_res_p$padj),]
+csc_resLFC_p <- lfcShrink(csc_dds_p, coef = "Genotype_WT_vs_SCA7", type = "apeglm")
+csc_vsd_p <- vst(csc_dds_p, blind=FALSE)
+
+csc_resOrdered_5w <- csc_res_5w[order(csc_res_5w$padj),]
+csc_resLFC_5w <- lfcShrink(csc_dds_5w, coef = "Genotype_WT_vs_SCA7", type = "apeglm")
+csc_vsd_5w <- vst(csc_dds_5w, blind=FALSE)
+
+csc_resOrdered_9w <- csc_res_9w[order(csc_res_9w$padj),]
+csc_resLFC_9w <- lfcShrink(csc_dds_9w, coef = "Genotype_WT_vs_SCA7", type = "apeglm")
+csc_vsd_9w <- vst(csc_dds_9w, blind=FALSE)
+
+csc_resOrdered_young <- csc_res_9w[order(csc_res_young$padj),]
+```
+
+
+```{r create dds object for med, cache=TRUE}
+med_dds_p <- DESeqDataSetFromHTSeqCount(sampleTable = med_sampletable_p,
+                        directory = "data/counts_4thcol/",
+                        design = ~ Genotype)
+med_dds_5w <- DESeqDataSetFromHTSeqCount(sampleTable = med_sampletable_5w,
+                        directory = "data/counts_4thcol/",
+                        design = ~ Genotype)
+med_dds_9w <- DESeqDataSetFromHTSeqCount(sampleTable = med_sampletable_9w,
+                        directory = "data/counts_4thcol/",
+                        design = ~ Genotype)
+med_dds_young <- DESeqDataSetFromHTSeqCount(sampleTable = med_sampletable_young,
+                        directory = "../data/counts_4thcol/",
+                        design = ~ Genotype)
+
+# pre-filter to exclude rows with few reads, reduce memory size of ddsHTSeq
+med_dds_p <- DESeq(med_dds_p[rowSums(counts(med_dds_p)) >= 10])
+med_dds_5w <- DESeq(med_dds_5w[rowSums(counts(med_dds_5w)) >= 10])
+med_dds_9w <- DESeq(med_dds_9w[rowSums(counts(med_dds_9w)) >= 10])
+med_dds_young <- DESeq(med_dds_young[rowSums(counts(med_dds_young)) >= 10]) 
+
+# set Genotype, Age, Tissue as a factor and relevel 'WT' as baseline
+med_dds_p$Genotype <- factor(med_dds_p$Genotype, level = c('WT', 'SCA7'))
+med_dds_5w$Genotype <- factor(med_dds_5w$Genotype, level = c('WT', 'SCA7'))
+med_dds_9w$Genotype <- factor(med_dds_9w$Genotype, level = c('WT', 'SCA7'))
+med_dds_young$Genotype <- factor(med_dds_young$Genotype, level = c('WT', 'SCA7'))
+
+# create result object
+med_res_p <- results(med_dds_p, alpha = 0.05)
+med_res_5w <- results(med_dds_5w, alpha = 0.05)
+med_res_9w <- results(med_dds_9w, alpha = 0.05)
+med_res_young <- results(med_dds_young, alpha = 0.05)
+
+# order result object by p-adjusted value
+med_resOrdered_p <- med_res_p[order(med_res_p$padj),]
+med_resLFC_p <- lfcShrink(med_dds_p, coef = "Genotype_WT_vs_SCA7", type = "apeglm")
+med_vsd_p <- vst(med_dds_p, blind=FALSE)
+
+med_resOrdered_5w <- med_res_5w[order(med_res_5w$padj),]
+med_resLFC_5w <- lfcShrink(med_dds_5w, coef = "Genotype_WT_vs_SCA7", type = "apeglm")
+med_vsd_5w <- vst(med_dds_5w, blind=FALSE)
+
+med_resOrdered_9w <- med_res_9w[order(med_res_9w$padj),]
+med_resLFC_9w <- lfcShrink(med_dds_9w, coef = "Genotype_WT_vs_SCA7", type = "apeglm")
+med_vsd_9w <- vst(med_dds_9w, blind=FALSE)
+
+med_resOrdered_young <- med_res_young[order(med_res_young$padj),]
+```
+
+
+```{r export to csv}
+# write.csv(as.data.frame(csc_resOrdered_p) %>% select(log2FoldChange, pvalue, padj),
+#       file="csc_resOrdered_p.csv")
+# write.csv(as.data.frame(csc_resOrdered_5w) %>% select(log2FoldChange, pvalue, padj),
+#       file="csc_resOrdered_5w.csv")
+# write.csv(as.data.frame(csc_resOrdered_9w) %>% select(log2FoldChange, pvalue, padj),
+#       file="csc_resOrdered_9w.csv")
+# 
+# write.csv(as.data.frame(med_resOrdered_p) %>% select(log2FoldChange, pvalue, padj),
+#       file="med_resOrdered_p.csv")
+# write.csv(as.data.frame(med_resOrdered_5w) %>% select(log2FoldChange, pvalue, padj),
+#       file="med_resOrdered_5w.csv")
+# write.csv(as.data.frame(med_resOrdered_9w) %>% select(log2FoldChange, pvalue, padj),
+#       file="med_resOrdered_9w.csv")
+```
+
+# GO analysis
+```{r data, message = FALSE, warning = FALSE}
+data("go.sets.mm")
+data("go.subs.mm")
+# data("kegg.sets.mm")
+# data("sigmet.idx.mm")
+```
+
+```{r}
+# geneList provided by DOSE
+data(geneList, package = "DOSE")
+
+gene <- names(geneList)[abs(geneList) > 2]
+gene
+# Entrez gene ID
+head(gene)
+
+# create all genes
+all_genes_csc <- as.character(rownames(csc_res))
+all_genes_med <- as.character(rownames(med_res))
+```
+
+# csc
+
+```{r csc_res_p, cache=TRUE}
+# csc_res_p
+signif_csc_res_p <- csc_res_p[csc_res_p$padj < 0.05 & !is.na(csc_res_p$padj),]
+signif_csc_genes <- as.character(rownames(signif_csc_res_p))
+csc_lfc <- signif_csc_res_p$log2FoldChange
+csc_lfc <- sort(csc_lfc, decreasing = TRUE)
+names(csc_lfc) <- as.character(rownames(signif_csc_res_p))
+  
+csc_ego_p <- enrichGO(gene          = signif_csc_genes,
+                universe      = all_genes_csc,
+                keyType = "SYMBOL",
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = FALSE)
+
+# catplot csc_p
+catplot_csc_p <- cnetplot(csc_ego_p,
+                 categorySize = "pvalue",
+                 foldChange = csc_lfc,
+                 colorEdge = TRUE,
+                 cex_label_category =1.0,
+                 cex_label_gene = 0.85)
+
+catplot_csc_p <- catplot_csc_p + ggtitle("Cnetplot for cervical spinal cord - pups") + theme(plot.title = element_text(hjust= 0.5))
+catplot_csc_p
+
+# barplot
+barplot_csc_p <- barplot(csc_ego_p, showCategory=20)
+barplot_csc_p
+```
+
+```{r csc_res_5w, cache=TRUE}
+# csc_res_5w
+signif_csc_res_5w <- csc_res_5w[csc_res_5w$padj < 0.05 & !is.na(csc_res_5w$padj),]
+signif_csc_genes <- as.character(rownames(signif_csc_res_5w))
+csc_lfc <- signif_csc_res_5w$log2FoldChange
+csc_lfc <- sort(csc_lfc, decreasing = TRUE)
+names(csc_lfc) <- as.character(rownames(signif_csc_res_5w))
+  
+csc_ego_5w <- enrichGO(gene          = signif_csc_genes,
+                # universe      = all_genes_csc,
+                keyType = "SYMBOL",
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = FALSE)
+
+# catplot csc_5w
+catplot_csc_5w <- cnetplot(csc_ego_5w,
+                 categorySize = "pvalue",
+                 foldChange = csc_lfc,
+                 colorEdge = TRUE,
+                 cex_label_category = 0.7,
+                 cex_label_gene = 0.5)
+
+catplot_csc_5w
+```
+
+
+```{r csc_res_9w, cache=TRUE}
+# csc_res_9w
+ssignif_csc_res_9w <- csc_res_9w[csc_res_9w$padj < 0.05 & !is.na(csc_res_9w$padj),]
+signif_csc_genes <- as.character(rownames(signif_csc_res_9w))
+csc_lfc <- signif_csc_res_9w$log2FoldChange
+csc_lfc <- sort(csc_lfc, decreasing = TRUE)
+names(csc_lfc) <- as.character(rownames(signif_csc_res_9w))
+  
+csc_ego_9w <- enrichGO(gene          = signif_csc_genes,
+                universe      = all_genes_csc,
+                keyType = "SYMBOL",
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = FALSE)
+
+# catplot csc_9w
+catplot_csc_9w <- cnetplot(csc_ego_9w,
+                 categorySize = "pvalue",
+                 foldChange = csc_lfc,
+                 colorEdge = TRUE,
+                 cex_label_category =1.1,
+                 cex_label_gene = 0.9)
+
+catplot_csc_9w
+
+# barplot
+barplot(csc_ego_9w, showCategory=15)
+```
+
+
+# medulla
+
+```{r med_res_p, cache=TRUE}
+# med_res_p
+signif_med_res_p <- med_res_p[med_res_p$padj < 0.05 & !is.na(med_res_p$padj),]
+signif_med_genes <- as.character(rownames(signif_med_res_p))
+med_lfc <- signif_med_res_p$log2FoldChange
+med_lfc <- sort(med_lfc, decreasing = TRUE)
+names(med_lfc) <- as.character(rownames(signif_med_res_p))
+   
+med_ego_p <- enrichGO(gene = signif_med_genes,
+                universe      = all_genes_med,
+                keyType = "SYMBOL",
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = FALSE)
+```
+
+```{r med_res_5w, cache=TRUE}
+# med_res_5w
+signif_med_res_5w <- med_res_5w[med_res_5w$padj < 0.05 & !is.na(med_res_5w$padj),]
+signif_med_genes <- as.character(rownames(signif_med_res_5w))
+med_lfc <- signif_med_res_5w$log2FoldChange
+med_lfc <- sort(med_lfc, decreasing = TRUE)
+names(med_lfc) <- as.character(rownames(signif_med_res_5w))
+  
+med_ego_5w <- enrichGO(gene          = signif_med_genes,
+                universe      = all_genes_med,
+                keyType = "SYMBOL",
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = FALSE)
+
+# catplot med_5w
+catplot_med_5w <- cnetplot(med_ego_5w,
+                 categorySize = "pvalue",
+                 foldChange = med_lfc,
+                 colorEdge = TRUE,
+                 cex_label_category = 0.7,
+                 cex_label_gene = 0.4)
+
+catplot_med_5w
+
+# barplot
+barplot(med_ego_5w, showCategory=20)
+```
+
+
+```{r med_res_9w, cache=TRUE}
+# med_res_9w
+signif_med_res_9w <- med_res_9w[med_res_9w$padj < 0.05 & !is.na(med_res_9w$padj),]
+signif_med_genes <- as.character(rownames(signif_med_res_9w))
+med_lfc <- signif_med_res_9w$log2FoldChange
+med_lfc <- sort(med_lfc, decreasing = TRUE)
+names(med_lfc) <- as.character(rownames(signif_med_res_9w))
+  
+med_ego_9w <- enrichGO(gene          = signif_med_genes,
+                universe      = all_genes_med,
+                keyType = "SYMBOL",
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = FALSE)
+
+# catplot med_9w
+catplot_med_9w <- cnetplot(med_ego_9w,
+                 categorySize = "pvalue",
+                 foldChange = med_lfc,
+                 colorEdge = TRUE,
+                 cex_label_category =0.7,
+                 cex_label_gene = 0.5)
+
+catplot_med_9w
+
+# barplot
+barplot(med_ego_9w, showCategory=15)
+
+# genes in the 9th enriched term - astrocyte differentiation
+astrodiff_genes <- med_ego_9w@result$geneID[9]
+
+# genes in the 13th enriched term - astrocyte differentiation
+astrodev_genes <- med_ego_9w@result$geneID[13]
+```
+
+```{r csc dotplot, cache=TRUE}
+# csc dotplot
+barplot(csc_ego_p, split = "ONTOLOGY") +
+          facet_grid(ONTOLOGY~., scale = "free")
+
+barplot(csc_ego_5w, split = "ONTOLOGY") +
+          facet_grid(ONTOLOGY~., scale = "free")
+
+barplot(csc_ego_9w, split = "ONTOLOGY") +
+          facet_grid(ONTOLOGY~., scale = "free")
+```
+
+```{r med dotplot, cache=TRUE}
+# dotplot(med_ego_p, split = "ONTOLOGY") +
+#          facet_grid(ONTOLOGY~., scale = "free")
+
+barplot(med_ego_5w, split = "ONTOLOGY") +
+          facet_grid(ONTOLOGY~., scale = "free")
+
+barplot(med_ego_9w, split = "ONTOLOGY") +
+          facet_grid(ONTOLOGY~., scale = "free")
+```
+
+
+
+

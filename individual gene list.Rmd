@@ -1,0 +1,1281 @@
+---
+title: "individual gene list"
+author: "Yihan Shi"
+date: "10/20/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, comment = NA, 
+                      message = FALSE, warning = FALSE,
+                      fig.height = 6, fig.width = 9, fig.align = "center")
+```
+
+```{r load libraries}
+library(DESeq2)
+library(apeglm)
+library(pheatmap)
+library(ggplot2)
+library(ggrepel)
+library(tidyverse)
+library(methods)
+library(dplyr)
+```
+
+```{r load data}
+mf <- read_csv("data/GOFUNCTION.csv")
+mf2 <- read_csv("data/GOPROCESS.csv")
+mf3 <- read_csv("data/GOCOMPONENT.csv")
+genelist <- read_csv("data/res_gene_list.csv")
+```
+
+```{r helper function}
+drop_duplicate_columns <- function(df) {
+  # Get unique column names
+  unique_cols <- !duplicated(names(df))
+  
+  # Select only unique columns
+  df <- df[, unique_cols]
+  
+  # Return dataframe without duplicate columns
+  return(df)
+}
+```
+
+```{r pathways}
+# pathways
+# amino acid transmembrane transporter activity
+mf %>% 
+  filter(Description == "amino acid transmembrane transporter activity") %>%
+  select(Genes) 
+
+amino_genes <- c("Slc7a11", "Gfap", "Slc6a9", "Slc7a10", "Slc7a6", "Slc25a18", "Kcnj10", "Slc1a2")
+
+# Myelin sheath
+myelin_genes <- c("Cldn11", "Ermn", "Tubb4a", "Mog", "Glul", "Mobp", "Atp1a2",
+                  "Gpi1", "Cryab", "Gjc2", "Gfap", "Tppp", "Car2", "Gnao1",
+                  "Tspan2", "Gjc3")
+
+# Neurotransmitter uptake
+nt_genes <- c("Slc7a11", "Slc6a3", "Slc6a9", "Atp1a2", "Kcnj10", "Slc1a2")
+
+# astrocyte projection
+mf %>% 
+  filter(Description == "astrocyte projection") %>% 
+  select(Genes)
+
+# glial cell projection
+mf %>% 
+  filter(Description == "glial cell projection") %>% 
+  select(Genes)
+
+# glial cell development
+mf2 %>% 
+  filter(Description == "glial cell development") %>% 
+  select(Genes) 
+
+gdev_genes <- c("Fgfr3", "Itgam", "Gfap", "Lgi4", "Tppp", "Lamc3", "Med12", "Kcnj10", 
+           "Tspan2")
+
+# mGlu receptors
+mGlu_genes <- c("Grm1", "Grm2", "Grm3", "Grm4", "Grm5", "Grm7", "Grm8")
+
+# Glutamate Ionotropic Receptor AMPA Type
+ampa_genes <- c("Gria1", "Gria2", "Gria3", "Gria4")
+
+# Glutamate Ionotropic Receptor Kainate Type
+kainate_genes <- c("Grik1", "Grik2", "Grik3", "Grik4", "Grik5")
+
+# Glutamate Ionotropic Receptor NMDA Type
+nmda_genes <- c("Grin3b", "Grin2c", "Grina", "Grin2a", "Grin1","Grin1os", "Grin3a",
+                "Grin2b", "Grin2d", "Nsmf")
+
+pyr_genes <- c("P2ry10", "P2ry14", "P2ry13", "P2ry12", "P2ry1", "P2ry6", "P2ry2", "P2ry4")
+```
+
+## PYR
+
+## amino acid 
+
+```{r}
+# dds functions
+res <- results(dds, alpha = 0.05)
+
+vsd <- vst(dds, blind = FALSE)
+
+# work with res data frame
+res_df <- as.data.frame(res_df) 
+
+# find the index function
+pyr <- c()
+pyr_num <- function(df, x){
+  for (i in 1:length(x)){
+    pyr[i] <- which(df$gene == pyr_genes[i])
+  }
+  return (pyr)
+}
+
+pyr <- pyr_num(res_df, pyr_genes)
+```
+
+
+```{r create heatmap}
+ann_colors = list(
+    Age = c("5w" = "#40B0A6", "p" = "#E1BE6A", "9w" = "#77301b"),
+    Genotype = c("WT" = "#FEFE62", "SCA7" = "#D35FB7")
+)
+
+df <- as.data.frame(colData(dds)[c("Age", "Genotype")])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(vsd)[pyr,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(50),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score\ngenes involved in pyrs")
+```
+
+```{r medulla data}
+med_res <- results(med_dds, alpha = 0.05)
+medresOrdered <- med_res[order(med_res$padj),]
+med_res_df <- as.data.frame(med_res) %>%
+  select(pvalue) %>%
+  rownames_to_column(var = "gene")
+
+med_amino <- med_res_df %>%
+  filter(gene %in% amino_genes)
+med_nt <- med_res_df %>%
+  filter(gene %in% nt_genes)
+```
+
+```{r medulla data 2}
+med_vsd <- vst(med_dds, blind=FALSE)
+
+# work with res data frame
+med_res_df <- as.data.frame(med_res) %>%
+  rownames_to_column(var = "gene")
+
+pyr_med <- pyr_num(med_res_df, pyr_genes)
+
+df <- as.data.frame(colData(med_dds)[c("Age", "Genotype")])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_vsd)[pyr_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (medulla)\ngenes involved in p2ry")
+```
+
+```{r csc data}
+csc_res <- results(csc_dds, alpha = 0.05)
+cscresOrdered <- csc_res[order(csc_res$padj),]
+csc_res_df <- as.data.frame(cscresOrdered) %>%
+  select(pvalue) %>%
+  rownames_to_column(var = "gene")
+
+csc_amino <- csc_res_df %>%
+  filter(gene %in% amino_genes)
+csc_nt <- csc_res_df %>%
+  filter(gene %in% nt_genes)
+```
+
+```{r}
+amino_ptable <- merge(x = med_amino, y = csc_amino, by = "gene", all = TRUE,
+                      suffix = c("_med", "_csc"))
+nt_ptable <- merge(x = med_nt, y = csc_nt, by = "gene", all = TRUE,
+                      suffix = c("_med", "_csc"))
+write.csv(amino_ptable, "P:/El Mallah Lab/Yihan/ST022/paper_review_2023_5/amino_ptable.csv", row.names=FALSE)
+write.csv(nt_ptable, "P:/El Mallah Lab/Yihan/ST022/paper_review_2023_5/nt_ptable.csv", row.names=FALSE)
+```
+
+
+```{r csc data2}
+csc_vsd <- vst(csc_dds, blind=FALSE)
+
+# work with res data frame
+csc_res_df <- as.data.frame(csc_res) %>%
+  rownames_to_column(var = "gene")
+
+pyr_genes <- c("P2ry14", "P2ry13", "P2ry12", "P2ry1", "P2ry6", "P2ry2", "P2ry4")
+
+# find the index function
+pyr <- c()
+pyr_num <- function(df, x){
+  for (i in 1:length(x)){
+    pyr[i] <- which(df$gene == pyr_genes[i])
+  }
+  return (pyr)
+}
+
+pyr_csc <- pyr_num(csc_res_df, pyr_genes)
+
+df <- as.data.frame(colData(csc_dds)[c("Age", "Genotype")])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_vsd)[pyr_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score \ngenes involved in p2ry (csc)")
+```
+
+## by age and genotype
+
+### csc
+```{r csc_pup}
+csc_p_res <- results(csc_p_dds, alpha = 0.05)
+csc_p_vsd <- vst(csc_p_dds, blind=FALSE)
+
+# work with res data frame
+csc_p_res_df <- as.data.frame(csc_p_res) %>%
+  rownames_to_column(var = "gene")
+
+amino_csc <- amino_num(csc_p_res_df, amino_genes)
+
+df <- as.data.frame(colData(csc_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_p_vsd)[amino_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+
+```{r csc_5w}
+csc_5w_res <- results(csc_5w_dds, alpha = 0.05)
+csc_5w_vsd <- vst(csc_5w_dds, blind=FALSE)
+
+# work with res data frame
+csc_5w_res_df <- as.data.frame(csc_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+amino_csc <- amino_num(csc_5w_res_df, amino_genes)
+
+df <- as.data.frame(colData(csc_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_5w_vsd)[amino_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 5w)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+```{r csc_9w}
+csc_9w_res <- results(csc_9w_dds, alpha = 0.05)
+csc_9w_vsd <- vst(csc_9w_dds, blind=FALSE)
+
+# work with res data frame
+csc_9w_res_df <- as.data.frame(csc_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+amino_csc <- amino_num(csc_9w_res_df, amino_genes)
+
+df <- as.data.frame(colData(csc_9w_dds)["Genotype"], order = TRUE)
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_9w_vsd)[amino_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 9w)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+### medulla
+```{r med_pup}
+med_p_res <- results(med_p_dds, alpha = 0.05)
+med_p_vsd <- vst(med_p_dds, blind=FALSE)
+
+# work with res data frame
+med_p_res_df <- as.data.frame(med_p_res) %>%
+  rownames_to_column(var = "gene")
+
+amino_med <- amino_num(med_p_res_df, amino_genes)
+
+df <- as.data.frame(colData(med_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_p_vsd)[amino_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+
+```{r med_5w}
+med_5w_res <- results(med_5w_dds, alpha = 0.05)
+med_5w_vsd <- vst(med_5w_dds, blind=FALSE)
+
+# work with res data frame
+med_5w_res_df <- as.data.frame(med_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+amino_med <- amino_num(med_5w_res_df, amino_genes)
+
+df <- as.data.frame(colData(med_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_5w_vsd)[amino_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 5w)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+```{r med_9w}
+med_9w_res <- results(med_9w_dds, alpha = 0.05)
+med_9w_vsd <- vst(med_9w_dds, blind=FALSE)
+
+# work with res data frame
+med_9w_res_df <- as.data.frame(med_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+amino_med <- amino_num(med_9w_res_df, amino_genes)
+
+df <- as.data.frame(colData(med_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_9w_vsd)[amino_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 9w)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+### combind p and 5w - amino acid
+
+```{r medulla heatmap}
+#for annotation colors
+ann_colors = list(
+    Age = c("5w" = "#40B0A6", "p" = "#E1BE6A"),
+    Genotype = c("WT" = "#FEFE62", "SCA7" = "#D35FB7")
+)
+
+med_res2 <- results(med_dds2, alpha = 0.05)
+med_vsd2 <- vst(med_dds2, blind=FALSE)
+# work with res data frame
+res_med2 <- as.data.frame(med_res2) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(med_dds2)[c("Age", "Genotype")])
+
+# find the index function
+amino <- c()
+amino_num <- function(df, x){
+  for (i in 1:length(x)){
+    amino[i] <- which(df$gene == amino_genes[i])
+  }
+  return (amino)
+}
+
+amino_med2 <- amino_num(res_med2, amino_genes)
+
+mat <- assay(med_vsd2)[amino_med2,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows=FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols=FALSE, annotation_col = df,
+         color = colorRampPalette(c("#356e9f", "#faf1ec", "#a9383f"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup & 5w)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+```{r csc heatmap}
+csc_res2 <- results(csc_dds2, alpha = 0.05)
+csc_vsd2 <- vst(csc_dds2, blind=FALSE)
+# work with res data frame
+res_csc2 <- as.data.frame(csc_res2) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(csc_dds2)[c("Age", "Genotype")])
+
+amino_csc2 <- amino_num(res_csc2, amino_genes)
+
+mat <- assay(csc_vsd2)[amino_csc2,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows=FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols=FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup & 5w)\ngenes involved in amino acid transmembrane transporter activity pathway")
+```
+
+## myelin sheath
+
+```{r}
+# dds functions
+res <- results(dds, alpha = 0.05)
+
+vsd <- vst(dds, blind = FALSE)
+
+# work with res data frame
+res_df <- as.data.frame(res) %>%
+  rownames_to_column(var = "gene")
+
+# find the index function
+myelin <- c()
+myelin_num <- function(df, x){
+  for (i in 1:length(x)){
+    myelin[i] <- which(df$gene == myelin_genes[i])
+  }
+  return (myelin)
+}
+
+myelin <- myelin_num(res_df, myelin_genes)
+```
+
+
+```{r create heatmap}
+ann_colors = list(
+    Age = c("5w" = "#40B0A6", "p" = "#E1BE6A"),
+    Genotype = c("WT" = "#FEFE62", "SCA7" = "#D35FB7")
+)
+
+df <- as.data.frame(colData(dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(vsd)[myelin,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue", "white", "red"))(50),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score\ngenes involved in myelin sheath pathway")
+```
+
+
+
+## by age and genotype
+
+### csc
+```{r csc_pup}
+csc_p_res <- results(csc_p_dds, alpha = 0.05)
+csc_p_vsd <- vst(csc_p_dds, blind=FALSE)
+
+# work with res data frame
+csc_p_res_df <- as.data.frame(csc_p_res) %>%
+  rownames_to_column(var = "gene")
+
+myelin_csc <- myelin_num(csc_p_res_df, myelin_genes)
+
+df <- as.data.frame(colData(csc_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_p_vsd)[myelin_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup)\ngenes involved in myelin sheath pathway")
+```
+
+
+```{r csc_5w}
+csc_5w_res <- results(csc_5w_dds, alpha = 0.05)
+csc_5w_vsd <- vst(csc_5w_dds, blind=FALSE)
+
+# work with res data frame
+csc_5w_res_df <- as.data.frame(csc_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+myelin_csc <- myelin_num(csc_5w_res_df, myelin_genes)
+
+df <- as.data.frame(colData(csc_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_5w_vsd)[myelin_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 5w)\ngenes involved in myelin sheath pathway")
+```
+
+```{r csc_9w}
+# 03302024 updated to address review
+csc_9w_res <- results(csc_9w_dds, alpha = 0.05)
+csc_9w_vsd <- vst(csc_9w_dds, blind=FALSE)
+
+# work with res data frame
+csc_9w_res_df <- as.data.frame(csc_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+myelin_csc <- myelin_num(csc_9w_res_df, myelin_genes)
+
+df <- as.data.frame(colData(csc_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_9w_vsd)[myelin_csc,]
+ztable <- as.data.frame(t(scale(t(assay(csc_9w_vsd)))))
+subset_ztable <- ztable[c(myelin_genes), ]
+subset_ztable_csc <- drop_duplicate_columns(subset_ztable)
+write.csv(as.data.frame(subset_ztable_csc), file="heatmap_csc_zscorevalue.csv")
+
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 9w)\ngenes involved in myelin sheath pathway csc")
+```
+
+### medulla
+```{r med_pup}
+med_p_res <- results(med_p_dds, alpha = 0.05)
+med_p_vsd <- vst(med_p_dds, blind=FALSE)
+
+# work with res data frame
+med_p_res_df <- as.data.frame(med_p_res) %>%
+  rownames_to_column(var = "gene")
+
+myelin_med <- myelin_num(med_p_res_df, myelin_genes)
+
+df <- as.data.frame(colData(med_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_p_vsd)[myelin_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup)\ngenes involved in myelin sheath pathway")
+```
+
+
+```{r med_5w}
+med_5w_res <- results(med_5w_dds, alpha = 0.05)
+med_5w_vsd <- vst(med_5w_dds, blind=FALSE)
+
+# work with res data frame
+med_5w_res_df <- as.data.frame(med_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+myelin_med <- myelin_num(med_5w_res_df, myelin_genes)
+
+df <- as.data.frame(colData(med_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_5w_vsd)[myelin_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 5w)\ngenes involved in myelin sheath pathway")
+```
+
+```{r med_9w}
+# 03302024 updated to address review
+med_9w_res <- results(med_9w_dds, alpha = 0.05)
+med_9w_vsd <- vst(med_9w_dds, blind=FALSE)
+
+# work with res data frame
+med_9w_res_df <- as.data.frame(med_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+myelin_med <- myelin_num(med_9w_res_df, myelin_genes)
+
+df <- as.data.frame(colData(med_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_9w_vsd)[myelin_med,]
+ztable <- as.data.frame(t(scale(t(assay(med_9w_vsd)))))
+subset_ztable <- ztable[c(myelin_genes), ]
+subset_ztable_med <- drop_duplicate_columns(subset_ztable)
+write.csv(as.data.frame(subset_ztable_med), file="heatmap_med_zscorevalue.csv")
+
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 9w)\ngenes involved in myelin sheath pathway")
+```
+
+### combind p and 5w - myelin sheath
+
+```{r medulla heatmap}
+med_res2 <- results(med_dds2, alpha = 0.05)
+med_vsd2 <- vst(med_dds2, blind=FALSE)
+# work with res data frame
+res_med2 <- as.data.frame(med_res2) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(med_dds2)[c("Age", "Genotype")])
+
+# find the index function
+myelin <- c()
+myelin_num <- function(df, x){
+  for (i in 1:length(x)){
+    myelin[i] <- which(df$gene == myelin_genes[i])
+  }
+  return (myelin)
+}
+
+myelin_med2 <- myelin_num(res_med2, myelin_genes)
+
+mat <- assay(med_vsd2)[myelin_med2,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows=FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols=FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup & 5w)\ngenes involved in myelin sheath activity pathway")
+```
+
+```{r csc heatmap}
+csc_res2 <- results(csc_dds2, alpha = 0.05)
+csc_vsd2 <- vst(csc_dds2, blind=FALSE)
+# work with res data frame
+res_csc2 <- as.data.frame(csc_res2) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(csc_dds2)[c("Age", "Genotype")])
+
+myelin_csc2 <- myelin_num(res_csc2, myelin_genes)
+
+mat <- assay(csc_vsd2)[myelin_csc2,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows=FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols=FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup & 5w)\ngenes involved in myelin sheath activity pathway")
+
+```
+
+## neurotransmitter transport
+
+```{r}
+# dds functions
+res <- results(dds, alpha = 0.05)
+
+vsd <- vst(dds, blind = FALSE)
+
+# work with res data frame
+res_df <- as.data.frame(res) %>%
+  rownames_to_column(var = "gene")
+
+# find the index function
+nt <- c()
+nt_num <- function(df, x){
+  for (i in 1:length(x)){
+    nt[i] <- which(df$gene == x[i])
+  }
+  return (nt)
+}
+
+nt <- nt_num(res_df, nt_genes)
+```
+
+
+## by age and genotype
+
+### csc
+```{r csc_pup}
+csc_p_res <- results(csc_p_dds, alpha = 0.05)
+csc_p_vsd <- vst(csc_p_dds, blind=FALSE)
+
+# work with res data frame
+csc_p_res_df <- as.data.frame(csc_p_res) %>%
+  rownames_to_column(var = "gene")
+
+nt_csc <- nt_num(csc_p_res_df, nt_genes)
+
+df <- as.data.frame(colData(csc_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_p_vsd)[nt_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup)\ngenes involved in neurotransmitter transport pathway")
+```
+
+```{r csc_5w}
+csc_5w_res <- results(csc_5w_dds, alpha = 0.05)
+csc_5w_vsd <- vst(csc_5w_dds, blind=FALSE)
+
+# work with res data frame
+csc_5w_res_df <- as.data.frame(csc_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(csc_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+# for csc_5w, tnere is no "slc6a3" but "slc16a3"
+nt_genes_5w <- c("Slc7a11", "Slc16a3", "Slc6a9", "Atp1a2", "Kcnj10", "Slc1a2")
+
+# find the index function
+nt <- c()
+nt_num <- function(df, x){
+  for (i in 1:length(x)){
+    nt[i] <- which(df$gene == x[i])
+  }
+  return (nt)
+}
+
+
+nt_csc <- nt_num(csc_5w_res_df, nt_genes_5w)
+
+mat <- assay(csc_5w_vsd)[nt_csc,]
+
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 5w)\ngenes involved in neurotransmitter transport pathway")
+```
+
+
+```{r csc_9w}
+csc_9w_res <- results(csc_9w_dds, alpha = 0.05)
+csc_9w_vsd <- vst(csc_9w_dds, blind=FALSE)
+
+# work with res data frame
+csc_9w_res_df <- as.data.frame(csc_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+nt_csc <- nt_num(csc_9w_res_df, nt_genes)
+
+df <- as.data.frame(colData(csc_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_9w_vsd)[nt_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 9w)\ngenes involved in neurotransmitter transport pathway")
+```
+
+### medulla
+```{r med_pup}
+med_p_res <- results(med_p_dds, alpha = 0.05)
+med_p_vsd <- vst(med_p_dds, blind=FALSE)
+
+# work with res data frame
+med_p_res_df <- as.data.frame(med_p_res) %>%
+  rownames_to_column(var = "gene")
+
+nt_med <- nt_num(med_p_res_df, nt_genes)
+
+df <- as.data.frame(colData(med_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_p_vsd)[nt_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup)\ngenes involved in neurotransmitter transport pathway")
+```
+
+
+```{r med_5w}
+med_5w_res <- results(med_5w_dds, alpha = 0.05)
+med_5w_vsd <- vst(med_5w_dds, blind=FALSE)
+
+# work with res data frame
+med_5w_res_df <- as.data.frame(med_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+nt_med <- nt_num(med_5w_res_df, nt_genes)
+
+df <- as.data.frame(colData(med_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_5w_vsd)[nt_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 5w)\ngenes involved in neurotransmitter transport pathway")
+```
+
+```{r med_9w}
+med_9w_res <- results(med_9w_dds, alpha = 0.05)
+med_9w_vsd <- vst(med_9w_dds, blind=FALSE)
+
+# work with res data frame
+med_9w_res_df <- as.data.frame(med_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+nt_med <- nt_num(med_9w_res_df, nt_genes)
+
+df <- as.data.frame(colData(med_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_9w_vsd)[nt_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 9w)\ngenes involved in neurotransmitter transport pathway")
+```
+
+
+
+### combind p and 5w - neurotransmitter
+
+```{r medulla heatmap}
+med_res2 <- results(med_dds2, alpha = 0.05)
+med_vsd2 <- vst(med_dds2, blind=FALSE)
+# work with res data frame
+res_med2 <- as.data.frame(med_res2) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(med_dds2)[c("Age", "Genotype")])
+
+# find the index function
+nt <- c()
+nt_num <- function(df, x){
+  for (i in 1:length(x)){
+    nt[i] <- which(df$gene == nt_genes[i])
+  }
+  return (nt)
+}
+
+nt_med2 <- nt_num(res_med2, nt_genes)
+
+mat <- assay(med_vsd2)[nt_med2,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows=FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols=FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup & 5w)\ngenes involved in neurotransmitter transporter activity pathway")
+```
+
+```{r csc heatmap}
+csc_res2 <- results(csc_dds2, alpha = 0.05)
+csc_vsd2 <- vst(csc_dds2, blind=FALSE)
+# work with res data frame
+res_csc2 <- as.data.frame(csc_res2) %>%
+  rownames_to_column(var = "gene")
+
+df <- as.data.frame(colData(csc_dds2)[c("Age", "Genotype")])
+
+nt_csc2 <- nt_num(res_csc2, nt_genes)
+
+mat <- assay(csc_vsd2)[nt_csc2,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows=FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols=FALSE, annotation_col = df,
+         color = colorRampPalette(c("#12467f", "#faf1ec", "#7b1325"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup & 5w)\ngenes involved in neurotransmitter transporter activity pathway")
+
+```
+
+
+
+-----------------------
+
+## glial cell development
+
+### med
+
+```{r med_9w}
+# dds functions
+med_9w_res <- results(med_9w_dds, alpha = 0.05)
+med_9w_vsd <- vst(med_9w_dds, blind=FALSE)
+
+# find the index function
+gdev <- c()
+gdev_num <- function(df, x){
+  for (i in 1:length(x)){
+    gdev[i] <- which(df$gene == gdev_genes[i])
+  }
+  return (gdev)
+}
+
+# work with res data frame
+med_9w_res_df <- as.data.frame(med_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+gdev_med <- gdev_num(med_9w_res_df, gdev_genes)
+
+df <- as.data.frame(colData(med_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_9w_vsd)[gdev_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 9w)\ngenes involved in glial cell development")
+```
+
+```{r med_5w}
+# dds functions
+med_5w_res <- results(med_5w_dds, alpha = 0.05)
+med_5w_vsd <- vst(med_5w_dds, blind=FALSE)
+
+# work with res data frame
+med_5w_res_df <- as.data.frame(med_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+gdev_med <- gdev_num(med_5w_res_df, gdev_genes)
+
+df <- as.data.frame(colData(med_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_5w_vsd)[gdev_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 5w)\ngenes involved in glial cell development")
+```
+
+```{r med_p}
+# dds functions
+med_p_res <- results(med_p_dds, alpha = 0.05)
+med_p_vsd <- vst(med_p_dds, blind=FALSE)
+
+# work with res data frame
+med_p_res_df <- as.data.frame(med_p_res) %>%
+  rownames_to_column(var = "gene")
+
+gdev_med <- gdev_num(med_p_res_df, gdev_genes)
+
+df <- as.data.frame(colData(med_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_p_vsd)[gdev_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup)\ngenes involved in glial cell development")
+```
+
+### csc
+
+```{r csc_9w}
+# dds functions
+csc_9w_res <- results(csc_9w_dds, alpha = 0.05)
+csc_9w_vsd <- vst(csc_9w_dds, blind=FALSE)
+
+# work with res data frame
+csc_9w_res_df <- as.data.frame(csc_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+gdev_csc <- gdev_num(csc_9w_res_df, gdev_genes)
+
+df <- as.data.frame(colData(csc_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_9w_vsd)[gdev_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 9w)\ngenes involved in glial cell development")
+```
+
+```{r csc_5w}
+# dds functions
+csc_5w_res <- results(csc_5w_dds, alpha = 0.05)
+csc_5w_vsd <- vst(csc_5w_dds, blind=FALSE)
+
+# work with res data frame
+csc_5w_res_df <- as.data.frame(csc_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+gdev_csc <- gdev_num(csc_5w_res_df, gdev_genes)
+
+df <- as.data.frame(colData(csc_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_5w_vsd)[gdev_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 5w)\ngenes involved in glial cell development")
+```
+
+```{r csc_p}
+# dds functions
+csc_p_res <- results(csc_p_dds, alpha = 0.05)
+csc_p_vsd <- vst(csc_p_dds, blind=FALSE)
+
+# work with res data frame
+csc_p_res_df <- as.data.frame(csc_p_res) %>%
+  rownames_to_column(var = "gene")
+
+gdev_csc <- gdev_num(csc_p_res_df, gdev_genes)
+
+df <- as.data.frame(colData(csc_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_p_vsd)[gdev_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup)\ngenes involved in glial cell development")
+```
+## mGlu receptor
+
+### csc
+
+```{r csc_pup}
+csc_p_res <- results(csc_p_dds, alpha = 0.05)
+csc_p_vsd <- vst(csc_p_dds, blind=FALSE)
+
+# work with res data frame
+csc_p_res_df <- as.data.frame(csc_p_res) %>%
+  rownames_to_column(var = "gene")
+
+# find the index function
+mGlu <- c()
+mGlu_num <- function(df, x){
+  for (i in 1:length(x)){
+    mGlu[i] <- which(df$gene == mGlu_genes[i])
+  }
+  return (mGlu)
+}
+
+mGlu_csc <- mGlu_num(csc_p_res_df, mGlu_genes)
+
+df <- as.data.frame(colData(csc_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_p_vsd)[mGlu_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc pup)\ngenes involved in mGlu Receptors pathway")
+```
+
+```{r csc_5w}
+csc_5w_res <- results(csc_5w_dds, alpha = 0.05)
+csc_5w_vsd <- vst(csc_5w_dds, blind=FALSE)
+
+# work with res data frame
+csc_5w_res_df <- as.data.frame(csc_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+mGlu_csc <- mGlu_num(csc_5w_res_df, mGlu_genes)
+
+df <- as.data.frame(colData(csc_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_5w_vsd)[mGlu_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 5w)\ngenes involved in mGlu Receptors pathway")
+```
+
+```{r csc_9w}
+csc_9w_res <- results(csc_9w_dds, alpha = 0.05)
+csc_9w_vsd <- vst(csc_9w_dds, blind=FALSE)
+
+# work with res data frame
+csc_9w_res_df <- as.data.frame(csc_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+mGlu_csc <- mGlu_num(csc_9w_res_df, mGlu_genes)
+
+df <- as.data.frame(colData(csc_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(csc_9w_vsd)[mGlu_csc,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (csc 9w)\ngenes involved in mGlu Receptors pathway")
+```
+
+### medulla
+
+```{r med_pup}
+med_p_res <- results(med_p_dds, alpha = 0.05)
+med_p_vsd <- vst(med_p_dds, blind=FALSE)
+
+# work with res data frame
+med_p_res_df <- as.data.frame(med_p_res) %>%
+  rownames_to_column(var = "gene")
+
+
+mGlu_med <- mGlu_num(med_p_res_df, mGlu_genes)
+
+df <- as.data.frame(colData(med_p_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_p_vsd)[mGlu_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med pup)\ngenes involved in mGlu Receptors pathway")
+```
+
+```{r med_5w}
+med_5w_res <- results(med_5w_dds, alpha = 0.05)
+med_5w_vsd <- vst(med_5w_dds, blind=FALSE)
+
+# work with res data frame
+med_5w_res_df <- as.data.frame(med_5w_res) %>%
+  rownames_to_column(var = "gene")
+
+mGlu_med <- mGlu_num(med_5w_res_df, mGlu_genes)
+
+df <- as.data.frame(colData(med_5w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_5w_vsd)[mGlu_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 5w)\ngenes involved in mGlu Receptors pathway")
+```
+
+```{r med_9w}
+med_9w_res <- results(med_9w_dds, alpha = 0.05)
+med_9w_vsd <- vst(med_9w_dds, blind=FALSE)
+
+# work with res data frame
+med_9w_res_df <- as.data.frame(med_9w_res) %>%
+  rownames_to_column(var = "gene")
+
+mGlu_med <- mGlu_num(med_9w_res_df, mGlu_genes)
+
+df <- as.data.frame(colData(med_9w_dds)["Genotype"])
+df <- df %>%
+  arrange(df)
+
+mat <- assay(med_9w_vsd)[mGlu_med,]
+zscore <- (mat - rowMeans(mat)) / rowSds(mat)
+
+pheatmap(zscore, cluster_rows = FALSE, show_rownames = TRUE,
+         show_colnames = FALSE, cluster_cols = FALSE, annotation_col = df,
+         color = colorRampPalette(c("blue","white", "red"))(100),
+         annotation_colors = ann_colors,
+         main = "Heatmap of z-score (med 9w)\ngenes involved in mGlu Receptors pathway")
+```
